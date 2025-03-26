@@ -28,7 +28,7 @@ def search(file, search, match="page"): # given a pdf file and string, returns p
                 return i
             
             elif(match=="string"): # returns the text until the next newline after string
-                expression = "[\n\r].*"+ String + "\s*([^\n\r]*)"
+                expression = r"[\n\r].*" + String + r"\s*([^\n\r]*)"
                 #print(expression)
                 tmp = re.search(expression, Text, re.IGNORECASE)[1]
                 name = re.sub(r'[^A-Za-z0-9 ]+', '', tmp)
@@ -171,11 +171,13 @@ if __name__=="__main__":
 
     completed_folder = "CMPL"
 
+    # Ensure the final folder exists
     if(not(os.path.isdir(completed_folder))):
         os.mkdir(completed_folder)
 
-    SRC = input("Enter source PDF path: ")
-    DST = input("Enter path for output: ")
+    # Get the input and output pdf directories
+    SRC = input("Enter a path for a source directory with input PDFs: ")
+    DST = input("Enter a path for the output directory: ")
 
 
     log = DST + "/logs.txt"

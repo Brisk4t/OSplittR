@@ -5,6 +5,7 @@ from multiprocessing import Pool, cpu_count, Process
 import time 
 import psutil
 import PyPDF2
+import fitz
 import logging
 import shutil
 import re
@@ -38,7 +39,39 @@ def search(file, search, match="page"): # given a pdf file and string, returns p
                 
                 return name
 
+
+def extract_text_from_pdf(pdf_path):
+    """Extracts text from a PDF file using fitz."""
+    try:
+        doc = fitz.open(pdf_path)
+        full_text = ""
         
+        # Loop through each page and extract text
+        for page_num in range(len(doc)):
+            page = doc.load_page(page_num)  # Load the page
+            full_text += page.get_text()  # Extract text from the page
+
+        return full_text
+    
+    except Exception as e:
+        logging.error(f"Error extracting text: {e}")
+        return None
+
+
+def find_asset_id(text):
+    pattern = r"\b(?:015)?[A-Za-z]{3}\d+\b"
+    matches = re.findall(pattern, text)
+
+    # First, prioritize those starting with '015'
+    for match in matches:
+        if match.startswith('015'):
+            return match  # Return the first match starting with '015'
+
+        else:
+            return matches[0]
+    
+    return None
+
 
 def split (file, start, end): # Given file path, split pdf into 2 files - one in range and one not in rage
 
@@ -72,124 +105,81 @@ def split (file, start, end): # Given file path, split pdf into 2 files - one in
     with open(submission, "wb") as out:
         pdf_writer2.write(out)
 
-
-def split_ocr(file_SRC, DST_dir, tmp_dir):
-    filename = file_SRC.split(sep='/')[-1]
-    temp_file = tmp_dir + "/" + filename
-   
-    Search_string1 = "Legal Entity Name"
-    Search_string2 = "Proponent’s Legal Name:"
-    Cores_Start_String = "Corporate Registration System"
-    Cores_End_String = "This is to certify that,"
+def file_by_assetid(file_path, DST_dir):
+    """OCR a source pdf, save a copy with the OCR layer and rename it to asset ID
     
-    ocrmypdf.ocr(file_SRC, temp_file, force_ocr=True)
+    """
+    print(f"Started {file_path}")
+    tmp_file = os.path.join(DST_dir, os.path.basename(file_path))
+    ocrmypdf.ocr(file_path, tmp_file, force_ocr=True)
 
-    enname = search(temp_file, Search_string1, "string")
-    if(enname == None or enname.strip() == None or enname.strip() == ""):
-        enname = search(temp_file, Search_string2, "string")
-        if(enname == None or enname.strip() == None or enname.strip() == ""):
-            enname = "Error"
-     
-    dirname = DST_dir + "/" + enname
-
-
-    if(not(os.path.isdir(dirname))): # If directory does not exist
-        os.mkdir(dirname) # Create a new directory of entity name
-
-        if(enname == "Error"): # If entity is error
-            new_dir = dirname + "/" + "0" 
-            os.mkdir(new_dir) # Create a first folder for the list
-            dirname = new_dir # Assign the new folder as the working directory
+    text_data = extract_text_from_pdf(tmp_file)
+    asset_id = None
+    
+    if text_data:
+        asset_id = find_asset_id(text_data)
 
 
+    if asset_id:
+        logging.debug(f"Asset ID for {file_path}: {asset_id}")
+        filename = os.path.join(DST_dir, asset_id) + ".pdf"
+        os.rename(tmp_file, filename)
 
-    else: # If directory already exists
-        folders = [x for x in os.listdir(dirname) if os.path.isdir(dirname + "/" + x)] # Get all files in directory
-        folders.sort()
-        
-        if not folders: # If there are no folders in the directory
-            new_index = "0" # Create a new folder '1'
-        
-        else: # if there are other folders in the directory
-            new_index = folders[-1] # Get the last folder
-        
-        new_dir_name = str(int(new_index) + 1) # Create a folder name by incrementing the last existing folder
+    return
 
-        new_dir = dirname + "/" + new_dir_name
-        os.mkdir(new_dir)
-        dirname = new_dir
-
-    DST_file = dirname + "/"+ enname + ".pdf"
-    shutil.copyfile(temp_file, DST_file)
-
-    cores_start = search(DST_file, Cores_Start_String, "page") 
-    cores_end = search(DST_file, Cores_End_String, "page")
-
-    print("Cores Start:", cores_start)
-    print("Cores End:", cores_end)
-
-    os.remove(file_SRC)
-
-    if(not (cores_start == None or cores_end == None)):
-        split(DST_file, cores_start, cores_end)
-
-    else:
-        return
-
-
-
-def batch_target(log, DST, TMP, doc):
+def batch_target(doc_path, DST):
     try:
-       split_ocr(doc, DST, TMP)
+       #split_ocr(doc_path, DST, TMP)
+       file_by_assetid(doc_path, DST)
 
     except Exception as excpt:
-        log.error(excpt)
+        logging.error("OCR failed for ", str(doc_path))
+        logging.error(excpt)
 
 def limit_cpu():
     p = psutil.Process(os.getpid())
     # set to lowest priority, this is windows only, on Unix use ps.nice(19)
     p.nice(psutil.BELOW_NORMAL_PRIORITY_CLASS)
 
-def batchocr(log, SRC, DST, TMP): # OCR every file in SRC and save to DST
-    pool = Pool(None, limit_cpu) # Use max no of processes = threads
+def batchocr(SRC, DST): 
+    """Loop over SRC to add pdfs to
+    :TMP: folder where OCRd PDFs are saved before.. 
+    """
 
-    docs = []
-    for doc in os.listdir(SRC):    
-        source = SRC + "/" + doc
-        docs.append(source)
+    # Create a pool of n processes that each run limit_cpu when started (n = number of threads)
+    pool = Pool(processes=None, initializer=limit_cpu)
 
-    #print(docs)
+    # Get the absolute path of each pdf in the SRC directory
+    doc_paths = []
+    for docname in os.listdir(SRC):    
+        doc_path = os.path.join(SRC, docname)
+        doc_paths.append(doc_path)
 
-    func = partial(batch_target, log, DST, TMP)
+    single_param_batch_target = partial(batch_target, DST=DST)
 
-    for p in pool.imap(func, docs):
+    # Spawn the worker pool for each file in doc_paths and return each worker as it completes
+    results = pool.imap(single_param_batch_target, doc_paths)
+    for result in results:
         pass
 
-
-
 if __name__=="__main__":
-
-    completed_folder = "CMPL"
-
-    # Ensure the final folder exists
-    if(not(os.path.isdir(completed_folder))):
-        os.mkdir(completed_folder)
-
     # Get the input and output pdf directories
-    SRC = input("Enter a path for a source directory with input PDFs: ")
-    DST = input("Enter a path for the output directory: ")
+    SRC = os.path.abspath(input("Enter a path for a source directory with input PDFs: "))
+    DST =  os.path.abspath(input("Enter a path for the output directory: "))
 
-
+    # Logging (non functional for now)
     log = DST + "/logs.txt"
     logging.basicConfig(filename=log, level=logging.DEBUG, 
-                    format='%(asctime)s %(levelname)s %(name)s %(message)s')
+                    format="%(asctime)s %(levelname)-8s %(message)s")
     
-    logger=logging.getLogger(__name__)
 
     start = time.time()
 
-    batchocr(logger, SRC, DST, completed_folder)
-    
+    #file_by_assetid(SRC, DST)
+
+    batchocr(SRC, DST)
+    #logging.getLogger().handlers[0].flush()  # Flush file handler to ensure logs are written
+
     end = time.time()
     print("Elapsed:", end-start)
 

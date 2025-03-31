@@ -151,15 +151,6 @@ def grayscale_preprocess(pdf_path):
     new_doc.save(new_doc_path)
     return new_doc_path
 
-def batch_target(target_function, *args, **kwargs):
-    try:
-       #split_ocr(doc_path, DST, TMP)
-       target_function(*args, **kwargs)
-
-    except Exception as excpt:
-        logging.error(excpt)
-
-
 
 
 

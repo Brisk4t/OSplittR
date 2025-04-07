@@ -1,20 +1,13 @@
-import io
 import tempfile
 import ocrmypdf
 import os
 import shutil
 from pathlib import Path
-from doctr.models import detection_predictor
-from multiprocessing import Pool, cpu_count, Process
-import time 
 import glob
-import psutil
 from dateutil import parser
 import fitz
 import logging
-import numpy as np
 import re
-from functools import partial
 
 
 def differential_hocr(pdf_file, output_file, preprocessor_function, *args, **kwargs):

@@ -28,7 +28,9 @@ def differential_hocr(pdf_file, output_file, preprocessor_function, *args, **kwa
     # Call the preprocessor
     preprocessed_pdf = preprocessor_function(pdf_file, *args, **kwargs)
 
+
     # Get the hocr directory for both pdfs 
+    print("Creating HOCR files")
     ocrmypdf.pdf_to_hocr(preprocessed_pdf, hocr_tmp_folder, force_ocr=True, image_dpi=400) # OCR the preprocessed pdf
     ocrmypdf.pdf_to_hocr(pdf_file, optimized_tmp_folder, force_ocr=True, tesseract_timeout=0, image_dpi=400) # Apply all non-ocr functions to original pdf
 
@@ -40,6 +42,7 @@ def differential_hocr(pdf_file, output_file, preprocessor_function, *args, **kwa
         shutil.copy(file, optimized_tmp_folder) # Copy the hocr data, replacing the placeholder files generated during image processing
 
     # Construct the final pdf
+    print("Constructing the final file from HOCR")
     ocrmypdf.hocr_to_ocr_pdf(optimized_tmp_folder, output_file)
 
     return output_file

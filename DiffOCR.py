@@ -45,6 +45,10 @@ def differential_hocr(pdf_file, output_file, preprocessor_function, *args, **kwa
     print("Constructing the final file from HOCR")
     ocrmypdf.hocr_to_ocr_pdf(optimized_tmp_folder, output_file)
 
+    # Delete temp folders
+    shutil.rmtree(hocr_tmp_folder) 
+    shutil.rmtree(optimized_tmp_folder)
+
     return output_file
 
 def extract_text_from_pdf(pdf_path):
